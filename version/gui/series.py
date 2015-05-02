@@ -30,20 +30,22 @@ from . import gui_constants
 #	def sizeHint(self):
 #		return self.pixmap.size()
 
+# Seems to be obselete
 class GridBox(QFrame):
 	"""Defines gridboxes; Data to be used by SeriesModel.
 	Receives an object of <Manga> class defined in database/manga.py
-	"""
+	CANDIDATE FOR OBSELENCE"""
 	def __init__(self, object):
 		super().__init__()
-		self.pixmap = object.pixmap
-		self.pixmap_huge = None
-		self.pixmap_big = None
-		self.pixmap_medium = None
-		self.pixmap_small = None
-		self.pixmap_micro = None
-		self.current_pixmap = None
-		self._do_pixmap() # create the different image sizes
+		# useless with QIcon
+		#self.pixmap = object.pixmap
+		#self.pixmap_huge = None
+		#self.pixmap_big = None
+		#self.pixmap_medium = None
+		#self.pixmap_small = None
+		#self.pixmap_micro = None
+		#self.current_pixmap = None
+		#self._do_pixmap() # create the different image sizes
 
 		self.title = object.get_title
 		self.artist = object.get_artist
@@ -53,12 +55,12 @@ class GridBox(QFrame):
 
 		self.setFrameStyle(self.StyledPanel)
 
-	def _do_pixmap(self):
-		"""Creates the different image sizes.
-		Note: Probably need to move this to database,
-		and have it be predefined for perfomance gains.
-		"""
-		pass
+	#def _do_pixmap(self):
+	#	"""Creates the different image sizes.
+	#	Note: Probably need to move this to database,
+	#	and have it be predefined for perfomance gains.
+	#	"""
+	#	pass
 
 	def initUI(self):
 		self.pixmap_label = QLabel()
@@ -116,17 +118,6 @@ class SeriesModel(QAbstractListModel):
 		self._data = [] # a list for the data
 		self.pic = QPixmap(gui_constants.PIXMAP_PATH) # the image for gridbox
 		self.modified_pic = self.pic # was meant for when i wanted to draw on the pic
-
-
-		# Wanted to draw on image, saving this
-		#paint = QPainter(self.modified_pic)
-		#paint.setRenderHint(QPainter.TextAntialiasing)
-		#font = paint.font()
-		#paint.setFont(font)
-		#init_font_size = font.pointSize()
-		#def font_size(x):
-		#	font.setPointSize(init_font_size*x)
-		#	paint.setFont(font)
 		
 		#Test data
 		#for x in range(100):
@@ -143,11 +134,12 @@ class SeriesModel(QAbstractListModel):
 		#	self._data.append([(title, artist),
 		#			  QIcon(self.modified_pic)])
 
+		# temporarily moving this to populate method
 		#local data
-		local_series = fetch.local() #move to seperate function later
-		for series in local_series:
-			self._data.append([(series.title, series.artist),
-					  QIcon(series.title_image)])
+		#local_series = fetch.local() #move to seperate function later
+		#for series in local_series:
+		#	self._data.append([(series.title, series.artist),
+		#			  QPixmap(series.title_image)])
 
 	def data(self, index, role):
 		if not index.isValid() or \
@@ -169,19 +161,40 @@ class SeriesModel(QAbstractListModel):
 			return bg_brush
 		if role == Qt.ToolTipRole:
 			return "Example popup!!"
+		if role == Qt.UserRole+1:
+			#this needs to be replaced by real metadata
+			test_data = {"date_added":"01 May 2015", "chapters":"30",
+				"year":"2015"}
+			return index
+
 		return None
 
-	def rowCount(self, parent = QModelIndex()):
+	def rowCount(self, index = QModelIndex()):
 		return len(self._data)
 
-	#def flags(self, QModelIndex):
-	#	pass
+	def flags(self, index):
+		if not index.isValid():
+			return Qt.ItemIsEnabled
+		return Qt.ItemFlags(QAbstractListModel.flags(self, index) |
+					  Qt.ItemIsEditable)
 
-	#def setData(self, QModelIndex, QVariant, role = Qt.EditRole):
-	#	pass
+	def setData(self, index, value, role = Qt.EditRole):
+		"""Takes the new data and appends it to old
+		Note: Might want to make make it replace instead"""
+		if index.isValid() and 0 <= index.row() < len(self._data):
+			current_row = index.row()
+			current_data = self._data[current_row]
+			self._data.append(value)
+			self.dataChanged.emit(index, index, ()) # emit a tuple of roles that have changed in 3rd arg
+			return True
+		return False
 
-	#def insertRows(self, int, int2, parent = QModelIndex()):
-	#	pass
+	def insertRows(self, position, value, rows=1, index = QModelIndex()):
+		self.beginInsertRows(QModelIndex(), position, position + rows - 1)
+		for row in range(rows):
+			self._data.insert(position + row, value)
+		self.endInsertRows()
+		return True
 
 	#def removeRows(self, int, int2, parent = QModelIndex()):
 	#	pass
@@ -192,8 +205,13 @@ class SeriesModel(QAbstractListModel):
 		pass
 
 	def populate(self):
-		"Populates from DB"
-		pass
+		"Populates from local series'"
+		local_series = fetch.local()
+		row = self.rowCount()
+		for series in local_series:
+			row += 1
+			value = [(series.title, series.artist), QPixmap(series.title_image)]
+			self.insertRows(row, value)
 
 	def save(self):
 		"Appends to DB for save"
@@ -215,7 +233,7 @@ class CustomDelegate(QStyledItemDelegate):
 
 	def paint(self, painter, option, index):
 		self.initStyleOption(option, index)
-		image = index.data(Qt.DecorationRole)
+		self.image = QIcon(index.data(Qt.DecorationRole))
 		self.text = index.data(Qt.DisplayRole)
 		popup = index.data(Qt.ToolTipRole)
 		title = self.text[0]
@@ -280,7 +298,7 @@ class CustomDelegate(QStyledItemDelegate):
 		""".format("chapter"))
 		chapter_area.setTextWidth(w)
 
-		image.paint(painter, QRect(x, y, w, h))
+		self.image.paint(painter, QRect(x, y, w, h))
 
 		#draw the label for text
 		painter.save()
@@ -310,10 +328,11 @@ class CustomDelegate(QStyledItemDelegate):
 		return QSize(self.W, self.H)
 
 	def editorEvent(self, event, model, option, index):
+		"Mouse events for each item in the view are defined here"
 		if event.type() == QEvent.MouseButtonPress:
 			self._state = (index.row(), index.column())
 			from ..constants import WINDOW
-			self.BUTTON_CLICKED.emit(WINDOW.setCurrentIndex(1, self.text))#self._state)
+			self.BUTTON_CLICKED.emit(WINDOW.setCurrentIndex(1, index))#self._state)
 			print("Clicked")
 			return True
 		else:
@@ -423,8 +442,13 @@ class ChapterUpper(QFrame):
 
 	def display_manga(self, index):
 		"""Receives a QModelIndex and updates the
-		viewport with manga data"""
-		self.drawImage()
+		viewport with specific manga data"""
+		self.image = index.data(Qt.DecorationRole)
+		self.text = index.data(Qt.DisplayRole)
+		self.metadata = index.data(Qt.UserRole+1)
+		self.title = self.text[0]
+		self.artist = self.text[1]
+		self.drawImage(self.image)
 
 	def initUI(self):
 		"Constructs UI for the chapter upper view"
@@ -439,8 +463,8 @@ class ChapterUpper(QFrame):
 
 		main_layout.addWidget(self.image_box, 0, Qt.AlignHCenter)
 
-	def drawImage(self):
-		self.image = QPixmap(gui_constants.PIXMAP_PATH)
+	def drawImage(self, img):
+		self.image = img
 		self.new_image = self.image.scaled(self.image_icon_size, Qt.KeepAspectRatio,
 					Qt.SmoothTransformation)
 		self.image_box.setPixmap(self.new_image)
